@@ -1,0 +1,14 @@
+artifact_uri: mlruns/0/207180f1700f4422805d678d8eb6d47e/artifacts
+end_time: 1782418397575
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 207180f1700f4422805d678d8eb6d47e
+run_name: exp_A_lr2e5_bs16
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1782417721340
+status: 3
+tags: []
+user_id: DRAX

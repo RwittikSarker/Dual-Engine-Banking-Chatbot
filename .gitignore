@@ -18,9 +18,20 @@ checkpoints/
 
 # HuggingFace / torch caches
 .cache/
-*.bin
 *.safetensors
 *.pt
+
+# Large trained model weights — regenerate with train.py
+models/classifier/
+models/faiss_index.bin
+!models/.gitkeep
+
+# Generated artifacts — regenerate with evaluate.py
+artifacts/*
+!artifacts/.gitkeep
+
+# MLflow database binary (auto-regenerated, too large for git)
+mlflow.db
 
 # Jupyter
 .ipynb_checkpoints/
@@ -38,4 +49,4 @@ Thumbs.db
 *.log
 
 # !! DO NOT IGNORE mlruns !!
-# mlruns/ is intentionally tracked in Git
+# mlruns/ is intentionally tracked in Git (required for evaluation)

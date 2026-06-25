@@ -7,7 +7,7 @@ Supports multiple experiment configurations defined in config.yaml.
 
 Usage:
     python src/train.py --config configs/config.yaml
-    python src/train.py --config configs/config.yaml --experiment exp_B_lr5e5_bs32
+    python src/train.py --config configs/config.yaml --experiment exp_B_lr5e5_bs16
 """
 
 from __future__ import annotations
@@ -20,6 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import json
 import os
+import shutil
+
+# Enable MLflow local file store tracking backend for assignment compatibility in MLflow 3.x+
+os.environ["MLFLOW_ALLOW_FILE_STORE"] = "true"
 
 import numpy as np
 
@@ -33,6 +37,10 @@ from src.utils import (
 )
 
 logger = get_logger(__name__)
+
+# Tracks the best F1 seen across all experiments so we only save
+# the truly best model to models/classifier/best/
+_best_f1_global: float = -1.0
 
 
 # ──────────────────────────────────────────────
@@ -135,7 +143,7 @@ def save_metrics_plot(history: dict, out_path: Path) -> None:
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     for ax, (key, title) in zip(axes, [("loss", "Loss"), ("eval_accuracy", "Accuracy")]):
-        if key in history:
+        if key in history and history[key]:
             ax.plot(history[key], marker="o", label=key)
             ax.set_title(title)
             ax.set_xlabel("Step / Epoch")
@@ -151,8 +159,13 @@ def save_metrics_plot(history: dict, out_path: Path) -> None:
 # Training
 # ──────────────────────────────────────────────
 
-def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
-    """Run a single training experiment and log to MLflow."""
+def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> float:
+    """
+    Run a single training experiment and log to MLflow.
+    Returns the final eval F1 score.
+    """
+    global _best_f1_global
+
     import mlflow
     import torch
     from transformers import (
@@ -162,6 +175,14 @@ def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
         TrainingArguments,
     )
     from sklearn.metrics import classification_report
+
+    # Detect CUDA
+    use_cuda = torch.cuda.is_available()
+    use_fp16 = use_cuda and cfg["classifier"].get("fp16", False)
+    if use_cuda:
+        logger.info("GPU detected: %s (fp16=%s)", torch.cuda.get_device_name(0), use_fp16)
+    else:
+        logger.info("No GPU detected — training on CPU (this will be slow).")
 
     # Seeds
     seed: int = cfg["dataset"]["random_seed"]
@@ -186,7 +207,7 @@ def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
     epochs: int = exp_cfg.get("epochs", cfg["classifier"]["epochs"])
 
     logger.info("=== Experiment: %s ===", exp_name)
-    logger.info("lr=%s  batch_size=%s  epochs=%s", lr, batch_size, epochs)
+    logger.info("lr=%s  batch_size=%s  epochs=%s  fp16=%s", lr, batch_size, epochs, use_fp16)
 
     # Tokeniser
     logger.info("Loading tokeniser: %s", model_name)
@@ -208,8 +229,7 @@ def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
         label2id=label2id,
     )
 
-    # MLflow
-    os.environ["MLFLOW_ALLOW_FILE_STORE"] = "true"
+    # MLflow setup
     mlflow.set_tracking_uri(cfg["mlflow"]["tracking_uri"])
     mlflow.set_experiment(cfg["mlflow"]["experiment_name"])
 
@@ -222,9 +242,11 @@ def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
             "epochs": epochs,
             "max_length": max_length,
             "num_labels": len(label_names),
+            "fp16": use_fp16,
         })
 
         # Training arguments
+        # Note: eval_strategy and save_strategy must match for load_best_model_at_end
         training_args = TrainingArguments(
             output_dir=str(classifier_dir / exp_name),
             num_train_epochs=epochs,
@@ -233,15 +255,16 @@ def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
             learning_rate=lr,
             weight_decay=cfg["classifier"]["weight_decay"],
             warmup_ratio=cfg["classifier"]["warmup_ratio"],
-            eval_strategy="epoch",
+            eval_strategy="epoch",           # replaces deprecated evaluation_strategy
             save_strategy="epoch",
             load_best_model_at_end=True,
             metric_for_best_model="f1",
             logging_dir=str(artifacts_dir / exp_name / "logs"),
             logging_steps=50,
             seed=seed,
-            report_to="none",  # We handle MLflow manually
-            dataloader_num_workers=0,
+            report_to="none",       # We handle MLflow manually
+            dataloader_num_workers=0,  # Required for Windows
+            fp16=use_fp16,          # Enabled only when CUDA available
         )
 
         # Trainer
@@ -261,13 +284,15 @@ def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
         eval_result = trainer.evaluate()
 
         # Log metrics
+        eval_f1 = eval_result.get("eval_f1", 0.0)
+        eval_acc = eval_result.get("eval_accuracy", 0.0)
         mlflow.log_metrics({
             "train_loss": train_result.training_loss,
             "eval_loss": eval_result.get("eval_loss", 0.0),
-            "accuracy": eval_result.get("eval_accuracy", 0.0),
+            "accuracy": eval_acc,
             "precision": eval_result.get("eval_precision", 0.0),
             "recall": eval_result.get("eval_recall", 0.0),
-            "f1": eval_result.get("eval_f1", 0.0),
+            "f1": eval_f1,
         })
 
         # Predictions for confusion matrix
@@ -293,7 +318,6 @@ def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
 
         # Metrics plot
         metrics_plot_path = artifacts_dir / f"metrics_{exp_name}.png"
-        # Build a simple history dict from trainer state
         history = {
             "loss": [x["loss"] for x in trainer.state.log_history if "loss" in x],
             "eval_accuracy": [x["eval_accuracy"] for x in trainer.state.log_history if "eval_accuracy" in x],
@@ -301,19 +325,30 @@ def run_experiment(cfg: dict, exp_cfg: dict, exp_name: str) -> None:
         save_metrics_plot(history, metrics_plot_path)
         mlflow.log_artifact(str(metrics_plot_path))
 
-        # Save best model (only for first/best experiment)
-        best_model_dir = classifier_dir / "best"
-        trainer.save_model(str(best_model_dir))
-        tokenizer.save_pretrained(str(best_model_dir))
-        logger.info("Best model saved → %s", best_model_dir)
-        mlflow.log_param("best_model_dir", str(best_model_dir))
+        # Bug fix: Only save to models/classifier/best/ if this run is best
+        if eval_f1 > _best_f1_global:
+            _best_f1_global = eval_f1
+            best_model_dir = classifier_dir / "best"
+            trainer.save_model(str(best_model_dir))
+            tokenizer.save_pretrained(str(best_model_dir))
+            logger.info(
+                "New best model saved → %s (F1=%.4f)", best_model_dir, eval_f1
+            )
+            mlflow.log_param("best_model_dir", str(best_model_dir))
+        else:
+            logger.info(
+                "Experiment %s F1=%.4f did not beat current best F1=%.4f — skipping save.",
+                exp_name, eval_f1, _best_f1_global,
+            )
 
         logger.info(
             "Experiment %s complete | acc=%.4f f1=%.4f",
             exp_name,
-            eval_result.get("eval_accuracy", 0),
-            eval_result.get("eval_f1", 0),
+            eval_acc,
+            eval_f1,
         )
+
+    return eval_f1
 
 
 # ──────────────────────────────────────────────
@@ -343,12 +378,20 @@ def main() -> None:
         # Fallback: single run from main classifier config
         experiments = [{"name": "default", **cfg["classifier"]}]
 
+    results = []
     for exp in experiments:
         if args.experiment and exp["name"] != args.experiment:
             continue
-        run_experiment(cfg, exp, exp["name"])
+        f1 = run_experiment(cfg, exp, exp["name"])
+        results.append((exp["name"], f1))
 
     logger.info("All experiments complete.")
+    logger.info("Results summary:")
+    for name, f1 in results:
+        logger.info("  %-30s F1=%.4f", name, f1)
+
+    best_name, best_f1 = max(results, key=lambda x: x[1])
+    logger.info("Best experiment: %s (F1=%.4f)", best_name, best_f1)
 
 
 if __name__ == "__main__":

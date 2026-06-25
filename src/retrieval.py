@@ -10,6 +10,7 @@ Steps:
 
 Usage (build index):
     python src/retrieval.py --build
+    python src/retrieval.py --build --config configs/config.yaml
 """
 
 from __future__ import annotations
@@ -117,14 +118,22 @@ class FlanT5Generator:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         self.model.eval()
+        logger.info("Generator loaded on device: %s", self.device)
 
     def generate(
         self,
         prompt: str,
-        max_new_tokens: int = 150,
-        num_beams: int = 4,
+        max_new_tokens: int = 128,
+        num_beams: int = 2,
+        do_sample: bool = False,
     ) -> str:
-        """Generate a response from the given prompt."""
+        """
+        Generate a response from the given prompt.
+
+        Note: temperature is incompatible with beam search (num_beams > 1).
+        Use do_sample=True with num_beams=1 if you want temperature-based sampling.
+        This implementation uses beam search (do_sample=False) for quality.
+        """
         import torch
         inputs = self.tokenizer(
             prompt,
@@ -138,6 +147,7 @@ class FlanT5Generator:
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 num_beams=num_beams,
+                do_sample=do_sample,       # Bug fix: was missing, caused inconsistency
                 early_stopping=True,
             )
         return self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
@@ -200,11 +210,12 @@ class RAGPipeline:
             f"Provide a clear, helpful, and professional response to the customer's query."
         )
 
-        # Generate
+        # Generate (beam search, no temperature conflict)
         answer = self.generator.generate(
             prompt,
             max_new_tokens=gen_cfg["max_new_tokens"],
             num_beams=gen_cfg["num_beams"],
+            do_sample=gen_cfg.get("do_sample", False),
         )
 
         return {

@@ -9,12 +9,13 @@ Launch:
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
-# Allow imports from repo root
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Bug fix: always resolve paths relative to repo root, not CWD
+_APP_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _APP_DIR.parent
+sys.path.insert(0, str(_REPO_ROOT))
 
 import streamlit as st
 
@@ -25,7 +26,7 @@ from src.utils import load_config
 # ──────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Banking Assistant",
+    page_title="Banking Assistant | Dual-Engine Chatbot",
     page_icon="🏦",
     layout="centered",
 )
@@ -37,34 +38,113 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    body { font-family: 'Segoe UI', sans-serif; }
-    .main { background: #f0f4f8; }
-    .metric-card {
-        background: white;
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin: 8px 0;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
+
+    /* Chat messages */
+    .user-msg {
+        background: linear-gradient(135deg, #1a3a6e, #1f5fb5);
+        color: #fff;
+        border-radius: 18px 18px 4px 18px;
+        padding: 14px 18px;
+        margin: 8px 0 8px 60px;
+        box-shadow: 0 2px 8px rgba(31, 95, 181, 0.25);
+        line-height: 1.55;
+    }
+    .bot-msg {
+        background: #1a1a2e;
+        color: #e8eaf6;
+        border-radius: 18px 18px 18px 4px;
+        padding: 14px 18px;
+        margin: 8px 60px 8px 0;
+        border-left: 4px solid #1f5fb5;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+        line-height: 1.55;
+    }
+    .msg-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.55;
+        margin-bottom: 4px;
+    }
+
+    /* Metric cards */
+    .metric-row {
+        display: flex;
+        gap: 12px;
+        margin: 12px 0;
+    }
+    .metric-card {
+        flex: 1;
+        background: #0f1535;
+        border: 1px solid #1e2d5e;
+        border-radius: 10px;
+        padding: 14px 16px;
+        text-align: center;
+    }
+    .metric-label {
+        font-size: 11px;
+        color: #8892b0;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+    }
+    .metric-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: #ccd6f6;
+    }
+    .metric-badge {
+        font-size: 11px;
+        border-radius: 999px;
+        padding: 2px 8px;
+        display: inline-block;
+        margin-top: 4px;
+        font-weight: 600;
+    }
+    .badge-high   { background: #1a4731; color: #4ade80; }
+    .badge-medium { background: #3d2f00; color: #fbbf24; }
+    .badge-low    { background: #3d0f0f; color: #f87171; }
+
+    /* Escalation */
     .escalate-yes {
         background: #1a1a2e;
-        border-left: 5px solid #ffc107;
-        padding: 12px 18px;
-        border-radius: 6px;
+        border-left: 5px solid #fbbf24;
+        padding: 14px 18px;
+        border-radius: 8px;
+        margin: 10px 0;
     }
     .escalate-no {
         background: #1a1a2e;
-        border-left: 5px solid #28a745;
-        padding: 12px 18px;
-        border-radius: 6px;
+        border-left: 5px solid #4ade80;
+        padding: 14px 18px;
+        border-radius: 8px;
+        margin: 10px 0;
     }
-    .answer-box {
-        background: #1a1a2e;
+
+    /* Input area */
+    .stTextArea textarea {
         border-radius: 10px;
-        padding: 20px;
-        border-left: 5px solid #0d6efd;
-        margin-top: 16px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border: 2px solid #1e2d5e;
+        background: #0f1535;
+        color: #e8eaf6;
+        font-family: 'Inter', sans-serif;
+    }
+    .stTextArea textarea:focus {
+        border-color: #1f5fb5;
+        box-shadow: 0 0 0 3px rgba(31,95,181,0.15);
+    }
+
+    /* Chat container scroll */
+    .chat-container {
+        max-height: 520px;
+        overflow-y: auto;
+        padding: 8px 0;
     }
     </style>
     """,
@@ -75,12 +155,22 @@ st.markdown(
 # Load pipeline (cached)
 # ──────────────────────────────────────────────
 
-@st.cache_resource(show_spinner="Loading models… this may take a minute on first run.")
+@st.cache_resource(show_spinner="⚙️ Loading models… this may take a minute on first run.")
 def load_pipeline():
     from src.predict import DualEnginePipeline
-    cfg = load_config("configs/config.yaml")
+    # Bug fix: use absolute path relative to repo root
+    cfg = load_config(str(_REPO_ROOT / "configs" / "config.yaml"))
     return DualEnginePipeline(cfg)
 
+
+# ──────────────────────────────────────────────
+# Session state init
+# ──────────────────────────────────────────────
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []   # list of {role, content, result}
+if "input_text" not in st.session_state:
+    st.session_state.input_text = ""
 
 # ──────────────────────────────────────────────
 # Header
@@ -94,23 +184,105 @@ st.markdown(
 st.divider()
 
 # ──────────────────────────────────────────────
-# Input
+# Chat history display
 # ──────────────────────────────────────────────
 
+if st.session_state.messages:
+    with st.container():
+        for msg in st.session_state.messages:
+            if msg["role"] == "user":
+                st.markdown(
+                    f'<div class="user-msg">'
+                    f'<div class="msg-label">You</div>'
+                    f'{msg["content"]}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                result = msg.get("result", {})
+                st.markdown(
+                    f'<div class="bot-msg">'
+                    f'<div class="msg-label">Banking Assistant</div>'
+                    f'{msg["content"]}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Metrics row
+                if result:
+                    conf = result.get("confidence_score", 0)
+                    sim = result.get("retrieval_similarity", 0)
+                    intent = result.get("detected_intent", "unknown").replace("_", " ").title()
+
+                    def _badge(val, high=0.8, med=0.6):
+                        if val >= high:
+                            return "high", "badge-high"
+                        elif val >= med:
+                            return "medium", "badge-medium"
+                        return "low", "badge-low"
+
+                    conf_label, conf_cls = _badge(conf)
+                    sim_label, sim_cls = _badge(sim, 0.8, 0.5)
+
+                    st.markdown(
+                        f"""
+                        <div class="metric-row">
+                          <div class="metric-card">
+                            <div class="metric-label">🎯 Intent</div>
+                            <div class="metric-value" style="font-size:14px;">{intent}</div>
+                          </div>
+                          <div class="metric-card">
+                            <div class="metric-label">🧠 Confidence</div>
+                            <div class="metric-value">{conf:.1%}</div>
+                            <span class="metric-badge {conf_cls}">{conf_label}</span>
+                          </div>
+                          <div class="metric-card">
+                            <div class="metric-label">🔍 Similarity</div>
+                            <div class="metric-value">{sim:.1%}</div>
+                            <span class="metric-badge {sim_cls}">{sim_label}</span>
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    esc = result.get("escalation_recommendation", "No")
+                    if esc == "Yes":
+                        reasons = ", ".join(result.get("escalation_reasons", []))
+                        st.markdown(
+                            f'<div class="escalate-yes">⚠️ <strong>Escalation Recommended</strong>'
+                            f'<br><small>{reasons}</small></div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            '<div class="escalate-no">✅ <strong>No Escalation Needed</strong>'
+                            " — System is confident in this response.</div>",
+                            unsafe_allow_html=True,
+                        )
+
+    st.divider()
+
+# ──────────────────────────────────────────────
+# Input area
+# ──────────────────────────────────────────────
+
+# Bug fix: bind text_area to session_state key so example buttons pre-fill it
 query = st.text_area(
-    "📝 Enter your banking question:",
+    "📝 Your banking question:",
     placeholder="e.g. My card was charged twice for the same transaction.",
     height=100,
+    key="input_text",   # bound to st.session_state.input_text
 )
 
 col_btn, col_clear = st.columns([1, 5])
 with col_btn:
     submitted = st.button("🔍 Get Answer", type="primary", use_container_width=True)
 with col_clear:
-    clear = st.button("Clear", use_container_width=False)
-
-if clear:
-    st.rerun()
+    if st.button("🗑️ Clear Chat", use_container_width=False):
+        st.session_state.messages = []
+        st.session_state.input_text = ""
+        st.rerun()
 
 # ──────────────────────────────────────────────
 # Pipeline & output
@@ -124,88 +296,32 @@ if submitted:
             pipeline = load_pipeline()
         except FileNotFoundError as exc:
             st.error(
-                f"Models not found: {exc}\n\n"
+                f"**Models not found:** {exc}\n\n"
                 "Please run the following commands first:\n"
-                "```\npython src/data_download.py\n"
+                "```bash\n"
+                "python src/data_download.py\n"
                 "python src/train.py --config configs/config.yaml\n"
-                "python src/retrieval.py --build\n```"
+                "python src/retrieval.py --build\n"
+                "```"
             )
             st.stop()
 
-        with st.spinner("Analysing your query…"):
+        # Add user message to history
+        st.session_state.messages.append({"role": "user", "content": query})
+
+        with st.spinner("🤖 Analysing your query…"):
             result = pipeline.predict(query)
 
-        st.divider()
+        # Add bot reply to history
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": result["generated_answer"],
+            "result": result,
+        })
 
-        # ── Generated Answer ─────────────────────────
-        st.subheader("💬 Generated Answer")
-        st.markdown(
-            f'<div class="answer-box">{result["generated_answer"]}</div>',
-            unsafe_allow_html=True,
-        )
-
-        st.divider()
-
-        # ── Metrics ──────────────────────────────────
-        st.subheader("📊 Analysis")
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric(
-                label="🎯 Detected Intent",
-                value=result["detected_intent"].replace("_", " ").title(),
-            )
-
-        with col2:
-            conf = result["confidence_score"]
-            delta_color = "normal" if conf >= 0.60 else "inverse"
-            st.metric(
-                label="🧠 Classifier Confidence",
-                value=f"{conf:.1%}",
-                delta=f"{'High' if conf >= 0.80 else 'Medium' if conf >= 0.60 else 'Low'}",
-                delta_color=delta_color,
-            )
-
-        with col3:
-            sim = result["retrieval_similarity"]
-            st.metric(
-                label="🔍 Retrieval Similarity",
-                value=f"{sim:.1%}",
-                delta=f"{'High' if sim >= 0.80 else 'Medium' if sim >= 0.50 else 'Low'}",
-                delta_color="normal" if sim >= 0.50 else "inverse",
-            )
-
-        st.divider()
-
-        # ── Escalation ───────────────────────────────
-        esc = result["escalation_recommendation"]
-        if esc == "Yes":
-            st.markdown(
-                f"""
-                <div class="escalate-yes">
-                <strong>⚠️ Escalation Recommended</strong><br>
-                This query has been flagged for human review.<br>
-                <em>Reasons: {', '.join(result.get('escalation_reasons', []))}</em>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                """
-                <div class="escalate-no">
-                <strong>✅ No Escalation Needed</strong><br>
-                The system is confident in this response.
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        st.divider()
-
-        # ── Raw JSON ─────────────────────────────────
-        with st.expander("🔧 Raw JSON Output"):
-            st.json(result)
+        # Clear input and rerun to show new messages
+        st.session_state.input_text = ""
+        st.rerun()
 
 # ──────────────────────────────────────────────
 # Sidebar
@@ -223,16 +339,18 @@ with st.sidebar:
 
         **Engine 2 — RAG Generator**
         - Embeddings: `all-MiniLM-L6-v2`
-        - Vector DB: FAISS
+        - Vector DB: FAISS (inner-product)
         - Generator: `flan-t5-small`
 
         **Escalation Engine**
         - Flags low-confidence queries
         - Flags out-of-domain queries
+        - Flags weak generated answers
         """
     )
     st.divider()
-    st.header("📋 Example Queries")
+
+    st.header("💬 Example Queries")
     examples = [
         "My card was charged twice",
         "How do I cancel a direct debit?",
@@ -240,7 +358,14 @@ with st.sidebar:
         "I need to update my PIN",
         "I received a suspicious email",
         "My account is frozen",
+        "How do I get a refund?",
+        "I want to dispute a transaction",
     ]
     for ex in examples:
-        if st.button(ex, key=ex):
-            st.session_state["query"] = ex
+        # Bug fix: clicking sets session_state.input_text (bound to text_area key)
+        if st.button(ex, key=f"example_{ex}"):
+            st.session_state.input_text = ex
+            st.rerun()
+
+    st.divider()
+    st.caption("Dual-Engine Banking Chatbot | SICIP @ BRAC University")

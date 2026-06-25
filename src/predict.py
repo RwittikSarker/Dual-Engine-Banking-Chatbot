@@ -24,7 +24,9 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Bug fix: always resolve paths relative to this file, not CWD
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPO_ROOT))
 
 import numpy as np
 import torch
@@ -56,6 +58,7 @@ class DualEnginePipeline:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.classifier.to(self.device)
         self.classifier.eval()
+        logger.info("Classifier loaded on device: %s", self.device)
 
         # Label encoder
         self.label2id, self.id2label = load_label_encoder(Path(cfg["paths"]["label_encoder"]))
@@ -96,6 +99,8 @@ class DualEnginePipeline:
 
     def predict(self, query: str) -> dict:
         """Full pipeline: classify → retrieve → generate → escalate."""
+        gen_cfg = self.cfg["generation"]
+
         # 1. Intent classification
         intent, confidence = self.classify(query)
         logger.info("Classified: %s (confidence=%.4f)", intent, confidence)
@@ -118,11 +123,11 @@ class DualEnginePipeline:
             f"Similar resolved queries:\n{context}\n\n"
             f"Provide a clear, empathetic, and actionable response:"
         )
-        gen_cfg = self.cfg["generation"]
         answer = self.generator.generate(
             prompt,
             max_new_tokens=gen_cfg["max_new_tokens"],
             num_beams=gen_cfg["num_beams"],
+            do_sample=gen_cfg.get("do_sample", False),
         )
 
         # 4. Escalation
@@ -146,7 +151,12 @@ class DualEnginePipeline:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Banking chatbot prediction pipeline")
     parser.add_argument("--query", required=True, help="User query text")
-    parser.add_argument("--config", default="configs/config.yaml")
+    # Bug fix: default config path relative to repo root, not CWD
+    parser.add_argument(
+        "--config",
+        default=str(_REPO_ROOT / "configs" / "config.yaml"),
+        help="Path to config YAML",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)

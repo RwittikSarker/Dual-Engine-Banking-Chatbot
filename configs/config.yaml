@@ -1,5 +1,6 @@
 # ============================================================
 # Dual-Engine Banking Chatbot - Central Configuration
+# Hardware target: i3 CPU + 8 GB RAM + GTX 1050 Ti 4 GB VRAM
 # ============================================================
 
 # -----------------------------------------------------------
@@ -26,6 +27,8 @@ dataset:
 
 # -----------------------------------------------------------
 # Classifier (DistilBERT)
+# NOTE: batch_size 16 is max safe for GTX 1050 Ti 4 GB VRAM
+#       fp16=True gives ~2x speed on CUDA, ignored on CPU
 # -----------------------------------------------------------
 classifier:
   model_name: "distilbert-base-uncased"
@@ -36,6 +39,7 @@ classifier:
   warmup_ratio: 0.1
   weight_decay: 0.01
   random_seed: 42
+  fp16: true          # Enabled: GTX 1050 Ti supports fp16; ignored on CPU
 
 # -----------------------------------------------------------
 # Retrieval (MiniLM + FAISS)
@@ -47,12 +51,14 @@ retrieval:
 
 # -----------------------------------------------------------
 # Generation (Flan-T5)
+# NOTE: temperature is ignored with beam search (num_beams>1)
+#       Using beam search for quality; set num_beams=1 for speed
 # -----------------------------------------------------------
 generation:
   model_name: "google/flan-t5-small"
-  max_new_tokens: 150
-  num_beams: 4
-  temperature: 0.7
+  max_new_tokens: 128
+  num_beams: 2          # Reduced from 4 → saves VRAM on 4 GB GPU
+  do_sample: false      # Beam search is deterministic
 
 # -----------------------------------------------------------
 # Escalation Thresholds
@@ -69,14 +75,16 @@ mlflow:
   tracking_uri: "mlruns"
 
 # -----------------------------------------------------------
-# Experiments (multiple runs)
+# Experiments (two runs for assignment requirement)
+# exp_A: lower LR, baseline
+# exp_B: higher LR (only LR differs, batch_size same → fair comparison)
 # -----------------------------------------------------------
 experiments:
   - name: "exp_A_lr2e5_bs16"
     learning_rate: 2.0e-5
     batch_size: 16
     epochs: 3
-  - name: "exp_B_lr5e5_bs32"
+  - name: "exp_B_lr5e5_bs16"
     learning_rate: 5.0e-5
-    batch_size: 32
+    batch_size: 16
     epochs: 3

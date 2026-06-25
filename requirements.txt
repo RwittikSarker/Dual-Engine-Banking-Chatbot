@@ -1,14 +1,27 @@
-# Core ML
---extra-index-url https://download.pytorch.org/whl/cpu
-torch>=2.0.0
-transformers>=4.38.0
-datasets>=3.6.0
+# ============================================================
+# Dual-Engine Banking Chatbot — Local Requirements
+# Optimized for: i3 CPU / 8 GB RAM / GTX 1050 Ti 4 GB VRAM
+# Platform compatibility: Python 3.14+ (Windows)
+# ============================================================
+
+# PyTorch with CUDA 12.6 (Required for Python 3.14 compatibility on Windows)
+# Using the cu126 index ensures we get GPU acceleration, preventing system RAM OOM.
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch>=2.9.0
+torchvision>=0.20.0
+
+# Transformers stack
+transformers>=4.40.0
+datasets>=2.18.0
 sentence-transformers>=2.3.0
-faiss-cpu>=1.7.4
 accelerate>=0.27.0
 tokenizers>=0.15.0
 
+# Vector search (CPU-only FAISS: extremely fast and uses minimal system RAM)
+faiss-cpu>=1.7.4
+
 # Data / numerics
+# We must allow numpy 2.x because Python 3.14+ does not have pre-built wheels for numpy 1.x.
 numpy>=1.24.0
 scikit-learn>=1.3.0
 pandas>=2.0.0
@@ -17,13 +30,16 @@ pandas>=2.0.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
 
-# MLflow
-mlflow>=3.14.0
+# MLflow (Allowed 3.x+ to support pyarrow 24.0.0+ wheels on Python 3.14+)
+mlflow>=2.12.0
 
-# App
+# Protobuf pin — prevents mlflow/transformers version conflicts
+protobuf>=3.20.0,<8.0.0
+
+# App interface
 streamlit>=1.30.0
 
-# Config
+# Config parser
 pyyaml>=6.0
 
 # Utilities
