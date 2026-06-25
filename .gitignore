@@ -1,0 +1,41 @@
+# Dataset files (auto-downloaded)
+data/*
+!data/.gitkeep
+
+# Python environments
+.venv/
+venv/
+env/
+
+# Byte-compiled / optimised
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Model checkpoints (large binary files)
+checkpoints/
+
+# HuggingFace / torch caches
+.cache/
+*.bin
+*.safetensors
+*.pt
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# !! DO NOT IGNORE mlruns !!
+# mlruns/ is intentionally tracked in Git

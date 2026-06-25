@@ -1,0 +1,14 @@
+artifact_uri: mlruns/0/f11875b421554be3bfb60bcdc1482603/artifacts
+end_time: 1782340119810
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: f11875b421554be3bfb60bcdc1482603
+run_name: exp_A_lr2e5_bs16
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1782337032995
+status: 3
+tags: []
+user_id: rwittik

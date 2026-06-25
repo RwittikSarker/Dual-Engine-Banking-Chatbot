@@ -1,0 +1,82 @@
+# ============================================================
+# Dual-Engine Banking Chatbot - Central Configuration
+# ============================================================
+
+# -----------------------------------------------------------
+# Paths
+# -----------------------------------------------------------
+paths:
+  data_dir: "data"
+  models_dir: "models"
+  artifacts_dir: "artifacts"
+  mlruns_dir: "mlruns"
+  faiss_index: "models/faiss_index.bin"
+  faiss_metadata: "models/faiss_metadata.json"
+  classifier_dir: "models/classifier"
+  label_encoder: "models/label_encoder.json"
+
+# -----------------------------------------------------------
+# Dataset
+# -----------------------------------------------------------
+dataset:
+  name: "PolyAI/banking77"
+  num_labels: 77
+  test_size: 0.15
+  random_seed: 42
+
+# -----------------------------------------------------------
+# Classifier (DistilBERT)
+# -----------------------------------------------------------
+classifier:
+  model_name: "distilbert-base-uncased"
+  max_length: 128
+  learning_rate: 2.0e-5
+  batch_size: 16
+  epochs: 3
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  random_seed: 42
+
+# -----------------------------------------------------------
+# Retrieval (MiniLM + FAISS)
+# -----------------------------------------------------------
+retrieval:
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  top_k: 5
+  similarity_threshold: 0.50
+
+# -----------------------------------------------------------
+# Generation (Flan-T5)
+# -----------------------------------------------------------
+generation:
+  model_name: "google/flan-t5-small"
+  max_new_tokens: 150
+  num_beams: 4
+  temperature: 0.7
+
+# -----------------------------------------------------------
+# Escalation Thresholds
+# -----------------------------------------------------------
+escalation:
+  confidence_threshold: 0.60
+  similarity_threshold: 0.50
+
+# -----------------------------------------------------------
+# MLflow
+# -----------------------------------------------------------
+mlflow:
+  experiment_name: "banking77_intent_classification"
+  tracking_uri: "mlruns"
+
+# -----------------------------------------------------------
+# Experiments (multiple runs)
+# -----------------------------------------------------------
+experiments:
+  - name: "exp_A_lr2e5_bs16"
+    learning_rate: 2.0e-5
+    batch_size: 16
+    epochs: 3
+  - name: "exp_B_lr5e5_bs32"
+    learning_rate: 5.0e-5
+    batch_size: 32
+    epochs: 3
