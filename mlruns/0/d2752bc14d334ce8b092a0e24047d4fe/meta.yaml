@@ -1,5 +1,5 @@
 artifact_uri: mlruns/0/d2752bc14d334ce8b092a0e24047d4fe/artifacts
-end_time: null
+end_time: 1782419127672
 entry_point_name: ''
 experiment_id: '0'
 lifecycle_stage: active
@@ -9,6 +9,6 @@ source_name: ''
 source_type: 4
 source_version: ''
 start_time: 1782418404750
-status: 1
+status: 3
 tags: []
 user_id: DRAX
