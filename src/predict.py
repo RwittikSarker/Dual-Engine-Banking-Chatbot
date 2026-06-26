@@ -33,6 +33,7 @@ import torch
 
 from src.escalation import build_escalation_engine
 from src.retrieval import MiniLMEmbedder, FAISSRetriever, FlanT5Generator
+from src.responses import get_response
 from src.utils import get_logger, load_config, load_label_encoder
 
 logger = get_logger(__name__)
@@ -130,16 +131,20 @@ class DualEnginePipeline:
             do_sample=gen_cfg.get("do_sample", False),
         )
 
-        # 4. Escalation
+        # 4. Template response (reliable, professional answer based on intent)
+        template_answer = get_response(intent)
+
+        # 5. Escalation
         esc_result = self.escalation_engine.evaluate(
             query=query,
             confidence_score=confidence,
             retrieval_similarity=top_similarity,
-            generated_answer=answer,
+            generated_answer=template_answer,
         )
 
         return {
-            "generated_answer": answer,
+            "generated_answer": template_answer,
+            "rag_answer": answer,          # raw Flan-T5 output kept for transparency
             "detected_intent": intent,
             "confidence_score": round(confidence, 4),
             "retrieval_similarity": round(top_similarity, 4),

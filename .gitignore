@@ -6,6 +6,7 @@ data/*
 .venv/
 venv/
 env/
+koto/
 
 # Byte-compiled / optimised
 __pycache__/
@@ -47,6 +48,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Dependency directories
+node_modules/
 
 # !! DO NOT IGNORE mlruns !!
 # mlruns/ is intentionally tracked in Git (required for evaluation)

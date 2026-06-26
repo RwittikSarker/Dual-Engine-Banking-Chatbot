@@ -38,8 +38,10 @@ class MiniLMEmbedder:
 
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         from sentence_transformers import SentenceTransformer
-        logger.info("Loading embedding model: %s", model_name)
-        self.model = SentenceTransformer(model_name)
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info("Loading embedding model: %s on device: %s", model_name, device)
+        self.model = SentenceTransformer(model_name, device=device)
 
     def encode(self, texts: list[str], batch_size: int = 64, show_progress: bool = False) -> np.ndarray:
         """Return L2-normalised embeddings, shape (N, D)."""
