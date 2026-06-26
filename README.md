@@ -62,21 +62,134 @@ Banking77 is a single-domain dataset of banking customer-service queries labelle
 
 ---
 
-## Setup
+---
 
-### Requirements
+## ⚡ Quick Start — How to Run the Full Project
 
-- Python 3.10+
-- pip
-- (Optional) CUDA-compatible GPU
+The project has **4 services**. You need to open **4 separate terminal windows**:
 
-### Installation
+| # | Service | Port | Command |
+|---|---------|------|---------|
+| 1 | **FastAPI Backend** (AI engine) | `8000` | See Terminal 1 below |
+| 2 | **Next.js Frontend** (modern UI) | `3000` | See Terminal 2 below |
+| 3 | **Streamlit App** (legacy UI) | `8501` | See Terminal 3 below |
+| 4 | **MLflow Dashboard** (experiments) | `5000` | See Terminal 4 below |
+
+> **Note:** The Next.js frontend (port 3000) talks to the FastAPI backend (port 8000). You must start **both** for the chat to work. The Streamlit app is standalone.
+
+---
+
+### Step 1 — Prerequisites
 
 ```bash
-git clone <repo-url>
-cd final-project
-pip install -r requirements.txt
+# Python 3.10+ and Node.js 18+ must be installed
+python --version    # should show 3.10+
+node --version      # should show v18+
+npm --version
 ```
+
+---
+
+### Step 2 — First-Time Setup (run once)
+
+```bash
+# Clone the repo
+git clone <repo-url>
+cd Dual-Engine-Banking-Chatbot
+
+# 1. Create and activate virtual environment
+python -m venv koto
+
+# Windows
+koto\Scripts\activate
+
+# macOS / Linux
+source koto/bin/activate
+
+# 2. Install Python dependencies
+pip install -r requirements.txt
+pip install fastapi uvicorn    # FastAPI backend dependencies
+
+# 3. Download dataset
+python src/data_download.py
+
+# 4. Train the DistilBERT classifier (logs to MLflow)
+python src/train.py --config configs/config.yaml
+
+# 5. Build the FAISS vector index (required for RAG)
+python src/retrieval.py --build
+
+# 6. Install Next.js frontend dependencies
+cd frontend
+npm install
+cd ..
+```
+
+---
+
+### Step 3 — Start All Services
+
+Open **4 separate terminal windows** in the project root, with the virtual environment activated (`koto\Scripts\activate` on Windows).
+
+#### 🟢 Terminal 1 — FastAPI Backend (AI Engine)
+```bash
+# From: Dual-Engine-Banking-Chatbot/
+koto\Scripts\uvicorn app.api:app --reload --port 8000
+```
+✅ Ready when you see: `Uvicorn running on http://127.0.0.1:8000`
+
+> **First message will take ~30 seconds** — the ML models load on the first request.
+
+#### 🟢 Terminal 2 — Next.js Frontend (Modern Chat UI)
+```bash
+# From: Dual-Engine-Banking-Chatbot/frontend/
+npm run dev
+```
+✅ Ready when you see: `▲ Next.js ... - Local: http://localhost:3000`
+
+#### 🟡 Terminal 3 — Streamlit App (Original UI — optional)
+```bash
+# From: Dual-Engine-Banking-Chatbot/
+streamlit run app/app.py
+```
+✅ Ready when you see: `You can now view your Streamlit app in your browser`
+
+#### 🟡 Terminal 4 — MLflow Dashboard (optional)
+```bash
+# From: Dual-Engine-Banking-Chatbot/
+python app/mlflow_ui.py
+# OR directly:
+mlflow ui --host 0.0.0.0 --port 5000
+```
+✅ Ready when you see: `Serving on http://0.0.0.0:5000`
+
+---
+
+### Step 4 — Open in Browser
+
+| URL | What it is |
+|-----|------------|
+| http://localhost:3000 | **Next.js Chat UI** (recommended) |
+| http://localhost:3000/chat | Direct chat page |
+| http://localhost:8000/docs | FastAPI Swagger API docs |
+| http://localhost:8501 | Streamlit UI (alternative) |
+| http://localhost:5000 | MLflow experiment dashboard |
+
+---
+
+### Minimal Start (Next.js UI only — 2 terminals)
+
+If you only want to use the **Next.js chat interface**, you only need Terminals 1 & 2:
+
+```bash
+# Terminal 1 — FastAPI backend
+koto\Scripts\uvicorn app.api:app --port 8000
+
+# Terminal 2 — Next.js frontend
+cd frontend && npm run dev
+```
+
+Then open **http://localhost:3000**.
 
 ---
 
@@ -301,4 +414,47 @@ final-project/
 ├── artifacts/
 ├── data/
 └── mlruns/
+```
+
+# Detailed System Architecture
+```
+                       [ USER QUERY ]
+                "My card was charged twice"
+                             │
+            ┌────────────────┴────────────────┐
+            ▼                                 ▼
+      [ ENGINE 1 ]                      [ ENGINE 2 ]
+Intent Classifier (DistilBERT)    Retrieval Pipeline (MiniLM & FAISS)
+            │                                 │
+     Determines topic                  Converts query to vector
+   e.g., "charged_twice"              & searches FAISS database
+   with confidence (e.g. 98.8%)       Retrieves 5 similar examples
+            │                                 │
+            │                          Constructs prompt:
+            │                          "User: My card was charged twice.
+            │                           Examples: ...
+            │                           Generate professional answer..."
+            │                                 │
+            │                                 ▼
+            │                        Flan-T5 Generator
+            │                        Produces natural response:
+            │                        "I apologize for the double billing..."
+            │                                 │
+            └───────────────┬─────────────────┘
+                            ▼
+                [ ESCALATION ENGINE ]
+                     (Safety Gate)
+            Checks thresholds in config.yaml:
+            - Is Classifier Confidence < 60%?
+            - Is Retrieval Similarity < 50%?
+            - Are out-of-domain keywords present?
+                            │
+            ┌───────────────┴───────────────┐
+            ▼                               ▼
+       [ YES ]                             [ NO ]
+Escalate to Human                    Display Answer
+Show warning to user                 Show response directly
+                            │
+                            ▼
+                     [ STREAMLIT UI ]
 ```

@@ -171,6 +171,30 @@ if "messages" not in st.session_state:
     st.session_state.messages = []   # list of {role, content, result}
 if "input_text" not in st.session_state:
     st.session_state.input_text = ""
+if "pending_query" not in st.session_state:
+    st.session_state.pending_query = ""
+if "show_warning" not in st.session_state:
+    st.session_state.show_warning = False
+
+# Callback handlers
+def handle_submit():
+    q = st.session_state.input_text.strip()
+    if q:
+        st.session_state.messages.append({"role": "user", "content": q})
+        st.session_state.pending_query = q
+        st.session_state.show_warning = False
+    else:
+        st.session_state.show_warning = True
+    st.session_state.input_text = ""
+
+def handle_clear():
+    st.session_state.messages = []
+    st.session_state.input_text = ""
+    st.session_state.pending_query = ""
+    st.session_state.show_warning = False
+
+def select_example(ex_text):
+    st.session_state.input_text = ex_text
 
 # ──────────────────────────────────────────────
 # Header
@@ -261,11 +285,24 @@ if st.session_state.messages:
                             unsafe_allow_html=True,
                         )
 
+                    # Show raw Flan-T5 output in expander for academic transparency
+                    rag_answer = result.get("rag_answer", "")
+                    if rag_answer:
+                        with st.expander("🔬 RAG Engine (Flan-T5) raw output"):
+                            st.caption("This is the raw generation from Flan-T5 small (80M params), shown for academic transparency. The final answer above uses intent-matched templates for reliability.")
+                            st.write(rag_answer)
+
+
     st.divider()
 
 # ──────────────────────────────────────────────
 # Input area
 # ──────────────────────────────────────────────
+
+# Warn user if they tried to submit empty input
+if st.session_state.show_warning:
+    st.warning("Please enter a query before submitting.")
+    st.session_state.show_warning = False
 
 # Bug fix: bind text_area to session_state key so example buttons pre-fill it
 query = st.text_area(
@@ -277,51 +314,42 @@ query = st.text_area(
 
 col_btn, col_clear = st.columns([1, 5])
 with col_btn:
-    submitted = st.button("🔍 Get Answer", type="primary", use_container_width=True)
+    st.button("🔍 Get Answer", type="primary", use_container_width=True, on_click=handle_submit)
 with col_clear:
-    if st.button("🗑️ Clear Chat", use_container_width=False):
-        st.session_state.messages = []
-        st.session_state.input_text = ""
-        st.rerun()
+    st.button("🗑️ Clear Chat", use_container_width=False, on_click=handle_clear)
 
 # ──────────────────────────────────────────────
 # Pipeline & output
 # ──────────────────────────────────────────────
 
-if submitted:
-    if not query.strip():
-        st.warning("Please enter a query before submitting.")
-    else:
-        try:
-            pipeline = load_pipeline()
-        except FileNotFoundError as exc:
-            st.error(
-                f"**Models not found:** {exc}\n\n"
-                "Please run the following commands first:\n"
-                "```bash\n"
-                "python src/data_download.py\n"
-                "python src/train.py --config configs/config.yaml\n"
-                "python src/retrieval.py --build\n"
-                "```"
-            )
-            st.stop()
+if st.session_state.pending_query:
+    query_to_process = st.session_state.pending_query
+    st.session_state.pending_query = ""  # Clear it immediately to avoid processing twice on next rerun
 
-        # Add user message to history
-        st.session_state.messages.append({"role": "user", "content": query})
+    try:
+        pipeline = load_pipeline()
+    except FileNotFoundError as exc:
+        st.error(
+            f"**Models not found:** {exc}\n\n"
+            "Please run the following commands first:\n"
+            "```bash\n"
+            "python src/data_download.py\n"
+            "python src/train.py --config configs/config.yaml\n"
+            "python src/retrieval.py --build\n"
+            "```"
+        )
+        st.stop()
 
-        with st.spinner("🤖 Analysing your query…"):
-            result = pipeline.predict(query)
+    with st.spinner("🤖 Analysing your query…"):
+        result = pipeline.predict(query_to_process)
 
-        # Add bot reply to history
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": result["generated_answer"],
-            "result": result,
-        })
-
-        # Clear input and rerun to show new messages
-        st.session_state.input_text = ""
-        st.rerun()
+    # Add bot reply to history
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": result["generated_answer"],
+        "result": result,
+    })
+    st.rerun()
 
 # ──────────────────────────────────────────────
 # Sidebar
@@ -362,10 +390,7 @@ with st.sidebar:
         "I want to dispute a transaction",
     ]
     for ex in examples:
-        # Bug fix: clicking sets session_state.input_text (bound to text_area key)
-        if st.button(ex, key=f"example_{ex}"):
-            st.session_state.input_text = ex
-            st.rerun()
+        st.button(ex, key=f"example_{ex}", on_click=select_example, args=(ex,))
 
     st.divider()
     st.caption("Dual-Engine Banking Chatbot | SICIP @ BRAC University")
