@@ -1,7 +1,7 @@
 # ============================================================
 # Dual-Engine Banking Chatbot — Local Requirements
 # Optimized for: i3 CPU / 8 GB RAM / GTX 1050 Ti 4 GB VRAM
-# Platform compatibility: Python 3.14+ (Windows)
+# Platform compatibility: Python 3.10+ (Windows)
 # ============================================================
 
 # PyTorch with CUDA 12.6 (Required for Python 3.14 compatibility on Windows)

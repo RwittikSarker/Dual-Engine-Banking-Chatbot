@@ -66,7 +66,7 @@ Banking77 is a single-domain dataset of banking customer-service queries labelle
 
 ## ⚡ Quick Start — How to Run the Full Project
 
-The project has **4 services**. You need to open **4 separate terminal windows**:
+The project has **4 services**. For local development, the simplest path is to use `docker compose up --build`. If you want to run each service manually, open **4 separate terminal windows**:
 
 | # | Service | Port | Command |
 |---|---------|------|---------|
@@ -123,7 +123,20 @@ python src/retrieval.py --build
 cd frontend
 npm install
 cd ..
+
+# 7. Optional: create a local frontend env file
+copy frontend\.env.example frontend\.env.local
 ```
+
+### Step 2b — One-Command Docker Setup
+
+If you just want to see the full stack running locally, use Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+This starts the backend API on port 8000, the Next.js frontend on port 3000, and the Streamlit app on port 8501.
 
 ---
 
@@ -327,21 +340,29 @@ A clean, interactive web interface allows non-technical users to query the chatb
 
 ## Docker
 
-### Build
+The root `Dockerfile` builds the **backend API image** and starts FastAPI on port 8000. The full application stack is defined in `docker-compose.yml`.
+
+### Build backend image
 
 ```bash
 docker build -t final-project-app:1.0 .
 ```
 
-### Run
+### Run backend image
 
 ```bash
-docker run -p 8501:8501 final-project-app:1.0
+docker run -p 8000:8000 final-project-app:1.0
 ```
 
-Open `http://localhost:8501` in your browser.
+### Run the full stack with Compose
 
-> **Note:** The Docker container expects trained models in the `models/` directory. Mount this as a volume or include pre-trained weights before building.
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:3000` for the Next.js UI, `http://localhost:8000/docs` for the API docs, and `http://localhost:8501` for Streamlit.
+
+> **Note:** The backend container expects trained models in the `models/` directory. Mount this as a volume or include pre-trained weights before building.
 
 ---
 
@@ -391,10 +412,14 @@ Open `http://localhost:8501` in your browser.
 ```
 final-project/
 ├── README.md
+├── LICENSE
+├── docker-compose.yml
 ├── final_report.md
 ├── requirements.txt
 ├── .gitignore
 ├── Dockerfile
+├── frontend/
+│   └── README.md
 ├── src/
 │   ├── data_download.py
 │   ├── train.py
